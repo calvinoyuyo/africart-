@@ -1,3 +1,4 @@
+cat > deploy/setup.sh << 'SCRIPT_END'
 #!/bin/bash
 # =============================================================
 # AfriCart VPS Setup Script
@@ -155,6 +156,27 @@ log "Firewall active"
 ufw status
 
 # -------------------------------------------------------------
+section "Detecting available ports"
+
+find_free_port() {
+  local port=$1
+  while ss -tln | grep -q ":$port "; do
+    port=$((port + 1))
+  done
+  echo $port
+}
+
+WEB_PORT=$(find_free_port 3000)
+API_PORT=$(find_free_port 3001)
+
+if [ "$API_PORT" -eq "$WEB_PORT" ]; then
+  API_PORT=$(find_free_port $((WEB_PORT + 1)))
+fi
+
+log "Storefront will run on port: $WEB_PORT"
+log "API will run on port: $API_PORT"
+
+# -------------------------------------------------------------
 section "Installing Nginx"
 
 if command -v nginx &> /dev/null; then
@@ -166,27 +188,27 @@ else
 fi
 
 # Write Nginx reverse proxy config for AfriCart
-cat > /etc/nginx/sites-available/africart <<'NGINXCONF'
+cat > /etc/nginx/sites-available/africart <<NGINXCONF
 server {
     listen 80;
     server_name _;
 
-    # Storefront (Next.js) — port 3000
+    # Storefront (Next.js)
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:$WEB_PORT;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
     }
 
-    # API (Node/Express) — port 3001
+    # API (Node/Express)
     location /api/ {
-        proxy_pass http://localhost:3001/;
+        proxy_pass http://localhost:$API_PORT/;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
     }
 }
 NGINXCONF
@@ -235,14 +257,14 @@ source /tmp/africart-install/db.conf
 cat > "$INSTALL_DIR/.env" <<ENVFILE
 DATABASE_URL="mysql://$DB_USER:$DB_PASS@localhost:3306/$DB_NAME"
 NEXTAUTH_SECRET="$(openssl rand -hex 32)"
-NEXTAUTH_URL="http://localhost:3000"
-NEXT_PUBLIC_API_BASE_URL="http://localhost:3001"
+NEXTAUTH_URL="http://localhost:$WEB_PORT"
+NEXT_PUBLIC_API_BASE_URL="http://localhost:$API_PORT"
 ENVFILE
 
 # Write server .env (Express backend)
 cat > "$INSTALL_DIR/server/.env" <<SERVERENV
 DATABASE_URL="mysql://$DB_USER:$DB_PASS@localhost:3306/$DB_NAME"
-PORT=3001
+PORT=$API_PORT
 NODE_ENV=production
 SERVERENV
 
@@ -262,7 +284,7 @@ npm run build
 pm2 start server/app.js --name "africart-api"
 
 # Start frontend
-pm2 start npm --name "africart-web" -- start
+pm2 start npm --name "africart-web" -- start -- -p $WEB_PORT
 
 pm2 save
 
