@@ -90,3 +90,39 @@ fi
 
 log "Node version: $(node -v)"
 log "NPM version: $(npm -v)"
+# =============================================================
+# SECTION 4: MYSQL SETUP
+# =============================================================
+section "Setting up MySQL"
+
+DB_NAME="africart"
+DB_USER="africart_user"
+DB_PASS="africart_$(openssl rand -hex 8)"
+
+if systemctl is-active --quiet mysql; then
+  warn "MySQL already running, skipping install..."
+else
+  log "Installing MySQL server..."
+  apt-get install -y mysql-server
+  systemctl start mysql
+  systemctl enable mysql
+fi
+
+log "Creating database and user..."
+mysql -u root <<EOF
+CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
+CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+log "MySQL ready"
+log "Database : $DB_NAME"
+log "User     : $DB_USER"
+log "Password : $DB_PASS"
+
+# Save credentials to a temp file so we can write .env later
+mkdir -p /tmp/africart-install
+echo "DB_NAME=$DB_NAME" > /tmp/africart-install/db.conf
+echo "DB_USER=$DB_USER" >> /tmp/africart-install/db.conf
+echo "DB_PASS=$DB_PASS" >> /tmp/africart-install/db.conf
