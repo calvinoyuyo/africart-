@@ -126,3 +126,75 @@ mkdir -p /tmp/africart-install
 echo "DB_NAME=$DB_NAME" > /tmp/africart-install/db.conf
 echo "DB_USER=$DB_USER" >> /tmp/africart-install/db.conf
 echo "DB_PASS=$DB_PASS" >> /tmp/africart-install/db.conf
+# =============================================================
+# SECTION 5: PM2 + FIREWALL + NGINX
+# =============================================================
+section "Installing PM2"
+
+if command -v pm2 &> /dev/null; then
+  warn "PM2 already installed, skipping..."
+else
+  npm install -g pm2
+  pm2 startup systemd -u root --hp /root
+fi
+
+log "PM2 version: $(pm2 -v)"
+
+# -------------------------------------------------------------
+section "Configuring UFW Firewall"
+
+ufw --force reset
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp    # SSH
+ufw allow 80/tcp    # HTTP
+ufw allow 443/tcp   # HTTPS
+ufw --force enable
+
+log "Firewall active"
+ufw status
+
+# -------------------------------------------------------------
+section "Installing Nginx"
+
+if command -v nginx &> /dev/null; then
+  warn "Nginx already installed, skipping..."
+else
+  apt-get install -y nginx
+  systemctl start nginx
+  systemctl enable nginx
+fi
+
+# Write Nginx reverse proxy config for AfriCart
+cat > /etc/nginx/sites-available/africart <<'NGINXCONF'
+server {
+    listen 80;
+    server_name _;
+
+    # Storefront (Next.js) — port 3000
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # API (Node/Express) — port 3001
+    location /api/ {
+        proxy_pass http://localhost:3001/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+NGINXCONF
+
+# Enable the site
+ln -sf /etc/nginx/sites-available/africart /etc/nginx/sites-enabled/africart
+rm -f /etc/nginx/sites-enabled/default
+
+nginx -t && systemctl reload nginx
+
+log "Nginx configured and running"
