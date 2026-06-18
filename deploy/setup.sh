@@ -58,3 +58,35 @@ apt-get install -y \
   lsb-release
 
 log "System update complete"
+# =============================================================
+# SECTION 3: NODE.JS VIA NVM
+# =============================================================
+section "Installing Node.js 20 via NVM"
+
+NVM_VERSION="v0.39.7"
+NODE_VERSION="20"
+NVM_DIR="/root/.nvm"
+
+if [ -d "$NVM_DIR" ]; then
+  warn "NVM already installed, skipping..."
+else
+  log "Downloading NVM $NVM_VERSION..."
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh | bash
+fi
+
+# Load NVM into current shell session
+export NVM_DIR="$NVM_DIR"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+# Install Node if not already present
+if nvm list | grep -q "v$NODE_VERSION"; then
+  warn "Node.js $NODE_VERSION already installed, skipping..."
+else
+  log "Installing Node.js $NODE_VERSION..."
+  nvm install $NODE_VERSION
+  nvm use $NODE_VERSION
+  nvm alias default $NODE_VERSION
+fi
+
+log "Node version: $(node -v)"
+log "NPM version: $(npm -v)"
