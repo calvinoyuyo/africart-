@@ -38,3 +38,23 @@ fi
 
 log "AfriCart setup starting..."
 log "Timestamp: $(date)"
+# =============================================================
+# SECTION 2: SYSTEM UPDATE + ESSENTIALS
+# =============================================================
+section "Updating system packages"
+
+apt-get update -y
+apt-get upgrade -y
+
+log "Installing essential packages..."
+apt-get install -y \
+  curl \
+  git \
+  ufw \
+  unzip \
+  build-essential \
+  ca-certificates \
+  gnupg \
+  lsb-release
+
+log "System update complete"
