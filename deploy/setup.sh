@@ -198,3 +198,94 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
 log "Nginx configured and running"
+# =============================================================
+# SECTION 6: CLONE REPO + INSTALL DEPENDENCIES
+# =============================================================
+section "Cloning AfriCart repository"
+
+INSTALL_DIR="/var/www/africart"
+REPO_URL="https://github.com/calvinoyuyo/africart-.git"
+
+if [ -d "$INSTALL_DIR" ]; then
+  warn "AfriCart already exists at $INSTALL_DIR, pulling latest..."
+  cd "$INSTALL_DIR" && git pull
+else
+  git clone "$REPO_URL" "$INSTALL_DIR"
+  cd "$INSTALL_DIR"
+fi
+
+log "Installing frontend dependencies..."
+npm install
+
+log "Installing backend dependencies..."
+cd "$INSTALL_DIR/server" && npm install
+
+cd "$INSTALL_DIR"
+log "Dependencies installed"
+
+# =============================================================
+# SECTION 7: WRITE .ENV + RUN MIGRATIONS + START WITH PM2
+# =============================================================
+section "Configuring environment"
+
+# Load the DB credentials we saved in Section 4
+source /tmp/africart-install/db.conf
+
+# Write root .env (Next.js frontend)
+cat > "$INSTALL_DIR/.env" <<ENVFILE
+DATABASE_URL="mysql://$DB_USER:$DB_PASS@localhost:3306/$DB_NAME"
+NEXTAUTH_SECRET="$(openssl rand -hex 32)"
+NEXTAUTH_URL="http://localhost:3000"
+NEXT_PUBLIC_API_BASE_URL="http://localhost:3001"
+ENVFILE
+
+# Write server .env (Express backend)
+cat > "$INSTALL_DIR/server/.env" <<SERVERENV
+DATABASE_URL="mysql://$DB_USER:$DB_PASS@localhost:3306/$DB_NAME"
+PORT=3001
+NODE_ENV=production
+SERVERENV
+
+log ".env files written"
+
+section "Running database migrations"
+cd "$INSTALL_DIR"
+npx prisma migrate deploy
+
+section "Starting AfriCart with PM2"
+cd "$INSTALL_DIR"
+
+# Build Next.js
+npm run build
+
+# Start backend API
+pm2 start server/app.js --name "africart-api"
+
+# Start frontend
+pm2 start npm --name "africart-web" -- start
+
+pm2 save
+
+# =============================================================
+# SECTION 8: SUCCESS SUMMARY
+# =============================================================
+SERVER_IP=$(curl -s ifconfig.me)
+
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  AfriCart is live!${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  Store URL   : ${BLUE}http://$SERVER_IP${NC}"
+echo -e "  Admin panel : ${BLUE}http://$SERVER_IP/admin${NC}"
+echo -e "  API         : ${BLUE}http://$SERVER_IP/api${NC}"
+echo ""
+echo -e "  DB Name     : $DB_NAME"
+echo -e "  DB User     : $DB_USER"
+echo -e "  DB Password : $DB_PASS"
+echo ""
+echo -e "${YELLOW}  Save your DB password — it won't be shown again${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Clean up temp files
+rm -rf /tmp/africart-install
