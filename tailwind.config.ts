@@ -10,6 +10,16 @@ const config: Config = {
     extend: {
       colors: {
         'custom-yellow':'#FED700',
+        'africart-blue': {
+          DEFAULT: '#0A5C8A',
+          light: '#1B7FB8',
+          dark: '#073F5E',
+        },
+        'africart-orange': {
+          DEFAULT: '#F2772F',
+          light: '#F8954F',
+          dark: '#D45F1E',
+        },
       }
     },
   },  
